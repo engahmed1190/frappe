@@ -431,3 +431,34 @@ result = [
 			self.assertGreaterEqual(len(rows), 1)
 		elif frappe.db.db_type == "postgres":
 			self.assertRaises(frappe.PermissionError, report.execute_query_report, filters={})
+
+	def test_standard_report_save_exempted_during_install(self):
+		"""Apps need to attach roles to standard reports in after_install / migrate / patch
+		hooks. Those code paths run with developer_mode off, so validate_standard_report()
+		must skip the developer_mode and Administrator guards when one of the install
+		flags is set."""
+		reports = frappe.get_all("Report", filters={"is_standard": "Yes"}, limit=1)
+		if not reports:
+			self.skipTest("No standard reports available in test site")
+		report_name = reports[0]["name"]
+
+		developer_mode = frappe.conf.developer_mode
+		frappe.conf.developer_mode = 0
+		try:
+			# Without any install flag → guard fires.
+			doc = frappe.get_doc("Report", report_name)
+			doc.flags.ignore_version = True
+			with self.assertRaises(frappe.ValidationError):
+				doc.save()
+
+			# in_install bypasses the guard.
+			for flag in ("in_install", "in_migrate", "in_patch"):
+				frappe.flags[flag] = True
+				try:
+					doc = frappe.get_doc("Report", report_name)
+					doc.flags.ignore_version = True
+					doc.save()
+				finally:
+					frappe.flags[flag] = False
+		finally:
+			frappe.conf.developer_mode = developer_mode

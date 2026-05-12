@@ -387,6 +387,12 @@ class Report(Document):
 		return data
 
 	def validate_standard_report(self):
+		# Allow app installers, migrations, and patches to modify standard reports
+		# (e.g. attaching roles in after_install) even when developer_mode is off.
+		# Mirrors the exemption in `on_trash` above.
+		if frappe.flags.in_install or frappe.flags.in_migrate or frappe.flags.in_patch:
+			return
+
 		if frappe.session.user != "Administrator":
 			frappe.throw(_("Only Administrator can save a standard report. Please rename and save."))
 
